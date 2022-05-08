@@ -62,7 +62,7 @@ def lstm_model(vocab_size, embedding_dims, x_train, y_train, x_val, y_val):
     )
     model = Sequential([Embedding(vocab_size, embedding_dims), LSTM(64), Dense(vocab_size, activation='softmax')])
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-    model.fit(x_train, y_train, batch_size=64, epochs=15, verbose=0, validation_data=(x_val, y_val), callbacks=[es])
+    model.fit(x_train, y_train, batch_size=64, epochs=50, verbose=0, validation_data=(x_val, y_val), callbacks=[es])
     return model
 
 
@@ -199,6 +199,22 @@ if __name__ == '__main__':
         elif opt in ('-ngram_size', "-n"):
             ngram_size = int(arg)
         elif opt in ('-num_words', "-w"):
+
+            if data == 'queen':
+                data = 'HerMajestySpeechesDataset'
+                text_train = readDataset(data + '/train.txt')
+                text_test = readDataset(data + '/test.txt')
+                text_val = readDataset(data + '/dev.txt')
+
+                tokenizer_train = Tokenizer(oov_token='<unk>', num_words=num_words)
+                tokenizer_train.fit_on_texts(text_train)
+
+                texts2ids_train = tokenizer_train.texts_to_sequences(text_train)
+                texts2ids_test = tokenizer_train.texts_to_sequences(text_test)
+                texts2ids_val = tokenizer_train.texts_to_sequences(text_val)
+
+                vocabulary_size = int(np.max(np.concatenate(texts2ids_train)) + 1)
+
             if int(arg) > vocabulary_size:
                 num_words = vocabulary_size
             else:
@@ -216,7 +232,7 @@ if __name__ == '__main__':
     for phrase in texts2ids_val:
         phrase.append(vocabulary_size)
 
-    print("Arguments:", option, model, ngram_size, num_words)
+    # print("Arguments:", option, model, ngram_size, num_words)
 
     if model == 'markov':
         all_ngrams = list()
@@ -226,7 +242,9 @@ if __name__ == '__main__':
         table = co_table(all_ngrams)
 
         if option == 'gen':
-            print("Generated sentence with random context: ", markov_generate(table, vocabulary_size, context='aleatorio', n=15))
+            print("\n\tGenerated sentence with random context: ")
+            for _ in range(10):
+                print(markov_generate(table, vocabulary_size, context='aleatorio', n=15)[0])
         
         elif option == 'eval':
             print("Mean perplexity: ", perplexity_markov(texts2ids_test, vocabulary_size, ngram_size))
@@ -240,7 +258,9 @@ if __name__ == '__main__':
         lstm = lstm_model(vocabulary_size+1, 20, x_train, y_train, x_val, y_val)
 
         if option == 'gen':
-            print("Generated sentence with random context: ", lstm_generate(lstm, vocabulary_size, context='aleatorio', n=15, mode=2, size=ngram_size))
+            print("\n\tGenerated sentence with random context: ")
+            for i in range(10):
+                print(lstm_generate(lstm, vocabulary_size, context='aleatorio', n=15, mode=2, size=ngram_size)[0])
         
         elif option == 'eval':
             print("Mean perplexity: ", perplexity_lstm(lstm, texts2ids_test, ngram_size))
