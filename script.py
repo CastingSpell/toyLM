@@ -163,7 +163,7 @@ if __name__ == '__main__':
         print('script.py [data] [option] [model] [ngram_size] [num_words]')
         sys.exit()
 
-    data, option, model, ngram_size, num_words = 'queen', None, None, 2, 2000
+    data, option, model, ngram_size, num_words = None, None, None, 2, None
 
     for opt, arg in opts:
 
@@ -199,21 +199,6 @@ if __name__ == '__main__':
         elif opt in ('-ngram_size', "-n"):
             ngram_size = int(arg)
         elif opt in ('-num_words', "-w"):
-
-            if data == 'queen':
-                data = 'HerMajestySpeechesDataset'
-                text_train = readDataset(data + '/train.txt')
-                text_test = readDataset(data + '/test.txt')
-                text_val = readDataset(data + '/dev.txt')
-
-                tokenizer_train = Tokenizer(oov_token='<unk>', num_words=num_words)
-                tokenizer_train.fit_on_texts(text_train)
-
-                texts2ids_train = tokenizer_train.texts_to_sequences(text_train)
-                texts2ids_test = tokenizer_train.texts_to_sequences(text_test)
-                texts2ids_val = tokenizer_train.texts_to_sequences(text_val)
-
-                vocabulary_size = int(np.max(np.concatenate(texts2ids_train)) + 1)
 
             if int(arg) > vocabulary_size:
                 num_words = vocabulary_size
