@@ -234,7 +234,7 @@ if __name__ == '__main__':
         table = co_table(all_ngrams)
 
         if option == 'gen':
-            print("Generated sentence with random context: ", markov_generate(table, context='aleatorio', n=15)[0]) 
+            print("Generated sentence with random context: ", markov_generate(table, vocabulary_size, context='aleatorio', n=15)[0]) 
         
         elif option == 'eval':
             print("Mean perplexity: ", perplexity_markov(texts2ids_test, vocabulary_size))
