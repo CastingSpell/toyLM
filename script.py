@@ -1,32 +1,48 @@
 import sys
-import tensorflow
 import numpy as np
 
 from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.python.client import device_lib
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Embedding, Dense, LSTM
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.preprocessing.sequence import pad_sequences
 
+################################# Read Dataset #################################
 
-def readDatasets(path):
+def readDataset(path):
     f = open(path, 'r', encoding='utf-8')
     texts = f.readlines()
     f.close()
     return texts
 
-def get_ngrams(frase, size=2):
-    frase = np.concatenate((np.zeros(size), frase))
+
+
+
+####################### Generate ngrams and training sets #######################
+
+def get_ngrams(phrase, size=2):
+    phrase = np.concatenate((np.zeros(size), phrase))
 
     ngrams_list = list()
-    for i in range(len(frase)-size):
-        ngrams_list.append((tuple(frase[i:i+size]),frase[i+size]))
+    for i in range(len(phrase)-size):
+        ngrams_list.append((tuple(phrase[i:i+size]), phrase[i+size]))
     return ngrams_list
 
-def co_table(lista_ocurrencias):
+def train_generate(text, size=2):
+    x, y = list(), list()
+    for readDataset in text:
+        for context, following in get_ngrams(readDataset, size):
+            x.append(list(context))
+            y.append(following)
+    return np.array(x), to_categorical(np.array(y))
+
+
+
+
+####################### Create and Train Models #######################
+
+def co_table(oc_list):
     table = dict()
-    for i in lista_ocurrencias:
+    for i in oc_list:
         if i[0] in table:
             if i[1] in table[i[0]]:
                 table[i[0]][i[1]] += 1
@@ -37,7 +53,53 @@ def co_table(lista_ocurrencias):
             table[i[0]][i[1]] = 1
     return table
 
-def generate_toyLM_ngram_a(table, context='aleatorio', n=15):
+def lstm_model(vocab_size, embedding_dims, x_train, y_train, x_val, y_val):
+    model = Sequential([Embedding(vocab_size, embedding_dims), LSTM(64), Dense(vocab_size, activation='softmax')])
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    model.fit(x_train, y_train, batch_size=64, epochs=15, verbose=0, validation_data=(x_val, y_val))
+    return model
+
+
+
+
+####################### Evaluate Models #######################
+
+def perplexity_markov(phrases, vocab_size, size=2):
+    tmp = list()
+    for phrase in phrases:
+        n_grams = get_ngrams(phrase, size)
+        perplexity = 1
+        for context, following in n_grams:
+            if context in table.keys():
+                denominator = sum(table[context].values())
+                if following in table[context].keys():
+                    numerator = table[context][following]
+                else:
+                    numerator = 0
+            else:
+                denominator, numerator = 0, 0
+
+            perplexity *= 1/((numerator+1)/(denominator+vocab_size))
+        tmp.append(perplexity**(1/len(n_grams)))
+    return np.mean(tmp)
+
+def perplexity_lstm(model, phrases, size=2):
+    tmp = []
+    for phrase in phrases:
+        x_test, _ = train_generate([phrase], size)
+        perplexity = 1
+        prob = model.predict(x_test)
+        for num, i in enumerate(prob):
+            perplexity *= 1/i[phrase[num]]
+        tmp.append(perplexity**(1/len(x_test)))
+    return np.mean(tmp)
+
+
+
+
+####################### Generate Text #######################
+
+def markov_generate(table, final_word, context='aleatorio', n=15):
     if context == 'aleatorio':
         tmp = list(table.keys())
         context = tmp[np.random.randint(len(tmp))]
@@ -49,32 +111,12 @@ def generate_toyLM_ngram_a(table, context='aleatorio', n=15):
             break
         else:
             new = max(table[context], key=table[context].get)
-            if new == 2000:
+            if new == final_word:
                 break
             cadena.append(new)
     return tokenizer_train.sequences_to_texts([cadena])
 
-def perplexity_ngrams(frases):
-    tmp = list()
-    for frase in frases:
-        n_grams = get_ngrams(frase)
-        perplexity = 1
-        for context, following in n_grams:
-            if context in table.keys():
-                denominador = sum(table[context].values())
-                if following in table[context].keys():
-                    numerador = table[context][following]
-                else:
-                    numerador = 0
-            else:
-                denominador, numerador = 0, 0
 
-            numerador += 1
-            denominador += 2000
-
-            perplexity *= 1/(numerador/denominador)
-        tmp.append(perplexity**(1/len(n_grams)))
-    return np.mean(tmp)
 
 def generate_toyLM_ngram_b(table, context='aleatorio', n=15):
     if context == 'aleatorio':
@@ -97,21 +139,8 @@ def generate_toyLM_ngram_b(table, context='aleatorio', n=15):
             cadena.append(lista_tmp[new])
     return tokenizer_train.sequences_to_texts([cadena])
 
-def train_generate(text, max_seq_length=10):
-    train_set = dict()
-    for frase in text:
-        for word_index in range(len(frase)):
-            if word_index < max_seq_length:
-                train_set[tuple(pad_sequences([frase[:word_index]], maxlen=max_seq_length)[0])] = frase[word_index]
-    return train_set
-    
-def train_generate(text, size=2):
-    x, y = list(), list()
-    for phrase in text:
-        for context, following in get_ngrams(phrase,size):
-            x.append(list(context))
-            y.append(following)
-    return np.array(x), to_categorical(np.array(y))
+
+
 
 def generate_toyLM_lstm_a(model, context='aleatorio', n=15):
     if context=='aleatorio':
@@ -141,61 +170,62 @@ def generate_toyLM_lstm_b(model, context='aleatorio', n=15):
         cadena.append(new)
     return tokenizer_train.sequences_to_texts([cadena])
 
-def perplexity_lstm(model, frases):
-    tmp = list()
-    for frase in frases:
-        n_grams = get_ngrams(frase)
-        perplexity = 1
-        for context, following in n_grams:
-            prob = model.predict(np.array([context]))
 
-            perplexity *= 1/prob[0][int(following)]
-        tmp.append(perplexity**(1/len(n_grams)))
-    return np.mean(tmp)
 
 
 if __name__ == '__main__':
 
-    text_train = readDatasets('HerMajestySpeechesDataset/train.txt')
-    text_test = readDatasets('HerMajestySpeechesDataset/test.txt')
-    text_val = readDatasets('HerMajestySpeechesDataset/dev.txt')
+    # Read parameters
+    ngrams_size = int(sys.argv[1])
+    max_num_words = int(sys.argv[2])
+    model_type = sys.argv[3]
 
-    tokenizer_train = Tokenizer(oov_token='<unk>', num_words = 2000)
+    # Read and tokenize text
+    text_train = readDataset('HerMajestySpeechesDataset/train.txt')
+    text_test = readDataset('HerMajestySpeechesDataset/test.txt')
+    text_val = readDataset('HerMajestySpeechesDataset/dev.txt')
+
+    tokenizer_train = Tokenizer(oov_token='<unk>', num_words = max_num_words)
     tokenizer_train.fit_on_texts(text_train) 
 
     texts2ids_train = tokenizer_train.texts_to_sequences(text_train)
     texts2ids_test = tokenizer_train.texts_to_sequences(text_test)
     texts2ids_val = tokenizer_train.texts_to_sequences(text_val)
 
-    for i, j, k in zip(texts2ids_train, texts2ids_test, texts2ids_val):
-        i.append(2000)
-        j.append(2000)
-        k.append(2000)
+    # Add a new token that identifies the end of each sentence
+    vocabulary_size = int(np.max(np.concatenate(texts2ids_train)) + 1)
 
-    if sys.argv[1] == 'markov':
+    for phrase in texts2ids_train:
+        phrase.append(vocabulary_size)
+
+    for phrase in texts2ids_test:
+        phrase.append(vocabulary_size)
+
+    for phrase in texts2ids_val:
+        phrase.append(vocabulary_size)
+
+    if model_type == 'markov':
         all_ngrams = list()
         for i in texts2ids_train:
             all_ngrams += get_ngrams(i)
 
         table = co_table(all_ngrams)
 
-        print("Generated sentence with random context: ", generate_toyLM_ngram_a(table, context='aleatorio', n=int(sys.argv[2]))[0]) 
-        print("Mean perplexity: ", perplexity_ngrams(texts2ids_test))
+        # print("Generated sentence with random context: ", markov_generate_a(table, context='aleatorio', n=int(sys.argv[2]))[0])
+        print("Mean perplexity: ", perplexity_markov(texts2ids_test, vocabulary_size))
 
-    elif sys.argv[1] == 'lstm':
+    elif model_type == 'lstm':
         train_set = train_generate(texts2ids_train)
         test_set = train_generate(texts2ids_test)
         val_set = train_generate(texts2ids_val)
 
-        x_train, y_train = train_generate(texts2ids_train, 10)
-        x_test, y_test = train_generate(texts2ids_test, 10)
-        x_val, y_val = train_generate(texts2ids_val, 10)
+        x_train, y_train = train_generate(texts2ids_train, 2)
+        x_test, y_test = train_generate(texts2ids_test, 2)
+        x_val, y_val = train_generate(texts2ids_val, 2)
 
-        model = Sequential([Embedding(2001, 20), LSTM(64), Dense(2001, activation='softmax')])
-        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-        history = model.fit(x_train, y_train, batch_size=64, epochs=15, verbose=0, validation_data=(x_val, y_val))
+        model = lstm_model(vocabulary_size+1, 20, x_train, y_train, x_val, y_val)
 
-        print("Generated sentence with random context: ", generate_toyLM_lstm_a(model, context='aleatorio', n=int(sys.argv[2]))[0])
+        # print("Generated sentence with random context: ", generate_toyLM_lstm_a(model, context='aleatorio', n=int(sys.argv[2]))[0])
         print("Mean perplexity: ", perplexity_lstm(model, texts2ids_test))
 
 
