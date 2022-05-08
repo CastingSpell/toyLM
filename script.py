@@ -1,4 +1,4 @@
-import sys
+import sys, getopt
 import numpy as np
 
 from tensorflow.keras.preprocessing.text import Tokenizer
@@ -171,28 +171,49 @@ def generate_toyLM_lstm_b(model, context='aleatorio', n=15):
     return tokenizer_train.sequences_to_texts([cadena])
 
 
-
-
 if __name__ == '__main__':
 
-    # Read parameters
-    ngrams_size = int(sys.argv[1])
-    max_num_words = int(sys.argv[2])
-    model_type = sys.argv[3]
+    try:
+        opts, args = getopt.getopt(sys.argv[1:],"o:m:n:w:",["option","model","n","w"])
+    except getopt.GetoptError:
+        print('script.py [option] [model] [ngram_size] [num_words]')
+        sys.exit()
 
-    # Read and tokenize text
+    option, model, ngram_size, num_words = None, None, 2, 2000
+
+    for opt, arg in opts:
+        if opt in ('-option', '-o'):
+            if arg not in ('gen', 'eval'):
+                print('Sintaxis incorrecta: script.py [option] [model] [ngram_size] [num_words]')
+            option = arg 
+
+        elif opt in ('-model', "-m"):
+            if arg not in ('markov', 'lstm'):
+                print('Sintaxis incorrecta: script.py [option] [model] [ngram_size] [num_words]')
+            model = arg
+        elif opt in ('-ngram_size', "-n"):
+            ngram_size = int(arg)
+        elif opt in ('-num_words', "-w"):
+            if int(arg) > 5615:
+                num_words = 5615
+            else:
+                num_words = int(arg)
+        else:
+            print('Sintaxis incorrecta: script.py [option] [model] [ngram_size] [num_words]')
+            sys.exit()
+
+    
     text_train = readDataset('HerMajestySpeechesDataset/train.txt')
     text_test = readDataset('HerMajestySpeechesDataset/test.txt')
     text_val = readDataset('HerMajestySpeechesDataset/dev.txt')
 
-    tokenizer_train = Tokenizer(oov_token='<unk>', num_words = max_num_words)
+    tokenizer_train = Tokenizer(oov_token='<unk>', num_words = num_words)
     tokenizer_train.fit_on_texts(text_train) 
 
     texts2ids_train = tokenizer_train.texts_to_sequences(text_train)
     texts2ids_test = tokenizer_train.texts_to_sequences(text_test)
     texts2ids_val = tokenizer_train.texts_to_sequences(text_val)
 
-    # Add a new token that identifies the end of each sentence
     vocabulary_size = int(np.max(np.concatenate(texts2ids_train)) + 1)
 
     for phrase in texts2ids_train:
@@ -204,29 +225,35 @@ if __name__ == '__main__':
     for phrase in texts2ids_val:
         phrase.append(vocabulary_size)
 
-    if model_type == 'markov':
+    print("Arguments:", option, model, ngram_size, num_words)
+    if model == 'markov':
         all_ngrams = list()
         for i in texts2ids_train:
             all_ngrams += get_ngrams(i)
 
         table = co_table(all_ngrams)
 
-        # print("Generated sentence with random context: ", markov_generate_a(table, context='aleatorio', n=int(sys.argv[2]))[0])
-        print("Mean perplexity: ", perplexity_markov(texts2ids_test, vocabulary_size))
+        if option == 'gen':
+            print("Generated sentence with random context: ", markov_generate(table, context='aleatorio', n=15)[0]) 
+        
+        elif option == 'eval':
+            print("Mean perplexity: ", perplexity_markov(texts2ids_test, vocabulary_size))
 
-    elif model_type == 'lstm':
+    elif model == 'lstm':
+
         train_set = train_generate(texts2ids_train)
         test_set = train_generate(texts2ids_test)
         val_set = train_generate(texts2ids_val)
 
-        x_train, y_train = train_generate(texts2ids_train, 2)
-        x_test, y_test = train_generate(texts2ids_test, 2)
-        x_val, y_val = train_generate(texts2ids_val, 2)
+        x_train, y_train = train_generate(texts2ids_train, 10)
+        x_test, y_test = train_generate(texts2ids_test, 10)
+        x_val, y_val = train_generate(texts2ids_val, 10)
 
-        model = lstm_model(vocabulary_size+1, 20, x_train, y_train, x_val, y_val)
+        lstm = lstm_model(vocabulary_size+1, 20, x_train, y_train, x_val, y_val)
 
-        # print("Generated sentence with random context: ", generate_toyLM_lstm_a(model, context='aleatorio', n=int(sys.argv[2]))[0])
-        print("Mean perplexity: ", perplexity_lstm(model, texts2ids_test))
-
-
+        if option == 'gen':
+            print("Generated sentence with random context: ", generate_toyLM_lstm_a(lstm, context='aleatorio', n=15)[0])
+        
+        elif option == 'eval':
+            print("Mean perplexity: ", perplexity_lstm(lstm, texts2ids_test))
 
